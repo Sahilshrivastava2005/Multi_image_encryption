@@ -1,39 +1,33 @@
 import numpy as np
-from modules import cicsml
-from modules import hilbert
 
 
-# -------- REVERSE DIFFUSION --------
+def inverse_permutation(perm):
+    perm = np.array(perm).flatten()
+    inv = np.zeros(len(perm), dtype=int)
+    inv[perm] = np.arange(len(perm))
+    return inv
+
+
 
 def reverse_diffusion(cipher_img, user_key):
-    """
-    Reverse the chaotic diffusion process
-    """
+
+    from modules import cicsml
 
     h, w = cipher_img.shape
     length = h * w
 
-    chaos_seq = cicsml.generate_chaos_with_key(
-        user_key,
-        cipher_img,
-        length
-    )
-
+    chaos_seq = cicsml.generate_chaos_with_key(user_key, length)
     chaos_seq = (chaos_seq * 255).astype(np.uint8)
 
-    flat = cipher_img.flatten()
+    cipher = cipher_img.flatten()
+    plain = np.zeros_like(cipher)
 
-    plain = np.zeros_like(flat)
-
-    # Reverse CBC-style diffusion
-    plain[0] = flat[0] ^ chaos_seq[0]
+    plain[0] = cipher[0] ^ chaos_seq[0]
 
     for i in range(1, length):
-        plain[i] = flat[i] ^ chaos_seq[i] ^ flat[i-1]
+        plain[i] = cipher[i] ^ chaos_seq[i] ^ cipher[i-1]
 
-    plain_img = plain.reshape(h, w)
-
-    return plain_img
+    return plain.reshape(h, w)
 
 
 def reverse_diffusion_all(D1, D2, D3, user_key):
@@ -49,52 +43,49 @@ def reverse_diffusion_all(D1, D2, D3, user_key):
     return S1, S2, S3
 
 
-# -------- REVERSE SCRAMBLING --------
-
-def reverse_permutation(image, perm):
-
-    h, w = image.shape
-    flat = image.flatten()
-
-    inv = np.zeros_like(flat)
-
-    inv[perm] = flat
-
-    return inv.reshape(h, w)
-
-
 def reverse_scramble(scrambled_img, keys):
-    """
-    Reverse the synchronized scrambling
-    """
+
+    h, w = scrambled_img.shape
 
     chaos_perm = keys["chaos_perm"]
     hilbert_perm = keys["hilbert_perm"]
 
-    # 1. Reverse chaos permutation
-    step1 = reverse_permutation(scrambled_img, chaos_perm)
+    flat = scrambled_img.flatten()
 
-    # 2. Reverse Hilbert permutation
-    h, w = step1.shape
-    flat = step1.flatten()
+    # ---- Reverse chaos permutation ----
+    inv_chaos = inverse_permutation(chaos_perm)
+    after_chaos = flat[inv_chaos]
 
-    inv = np.zeros_like(flat)
+    # ---- Reverse hilbert scrambling ----
+    # Handle both cases: 1D or coordinate permutation
 
-    for i, p in enumerate(hilbert_perm):
-        inv[p] = flat[i]
+    if isinstance(hilbert_perm, np.ndarray) and hilbert_perm.ndim == 1:
 
-    original = inv.reshape(h, w)
+        inv_hilbert = inverse_permutation(hilbert_perm)
+        after_hilbert = after_chaos[inv_hilbert]
 
-    return original
+    else:
+        # Coordinate based mapping
+        temp = np.zeros_like(after_chaos)
+
+        for i, coord in enumerate(hilbert_perm):
+            r, c = coord
+            index = r * w + c
+            temp[index] = after_chaos[i]
+
+        after_hilbert = temp
+
+    return after_hilbert.reshape(h, w)
 
 
-def reverse_scramble_all(S1, S2, S3, keys1, keys2, keys3):
+
+def reverse_scramble_all(S1, S2, S3, k1, k2, k3):
 
     print("[INFO] Reversing scrambling...")
 
-    I1 = reverse_scramble(S1, keys1)
-    I2 = reverse_scramble(S2, keys2)
-    I3 = reverse_scramble(S3, keys3)
+    I1 = reverse_scramble(S1, k1)
+    I2 = reverse_scramble(S2, k2)
+    I3 = reverse_scramble(S3, k3)
 
     print("[INFO] Scrambling reversed")
 

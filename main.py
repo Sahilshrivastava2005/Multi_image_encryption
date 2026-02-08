@@ -6,8 +6,7 @@ import config
 
 def main():
 
-    print("FINAL TEST – Encryption + Decryption")
-    # Test indexed transform reversibility
+    print("\n===== FINAL TEST – Encryption + Decryption =====\n")
 
     img1 = config.INPUT_PATH + "img1.png"
     img2 = config.INPUT_PATH + "img2.png"
@@ -19,10 +18,7 @@ def main():
         image_utils.prepare_indexed_images(I1, I2, I3)
 
     user_key = "MY_SECRET_KEY_123"
-    
-    rgb_test = image_utils.indexed_to_rgb(I1_index, MAP1)
 
-    image_utils.save_image(rgb_test, "indexed_reconstruction.png")
     # ---------- ENCRYPTION ----------
 
     (S1, k1), (S2, k2), (S3, k3) = encryption.scramble_all_images(
@@ -33,6 +29,10 @@ def main():
         S1, S2, S3, user_key
     )
 
+    image_utils.save_image(D1, "cipher1.png")
+    image_utils.save_image(D2, "cipher2.png")
+    image_utils.save_image(D3, "cipher3.png")
+
     # ---------- DECRYPTION ----------
 
     RS1, RS2, RS3 = decryption.reverse_diffusion_all(
@@ -42,23 +42,16 @@ def main():
     RI1, RI2, RI3 = decryption.reverse_scramble_all(
         RS1, RS2, RS3, k1, k2, k3
     )
-    # Test scrambling reversibility
 
-    rev = decryption.reverse_scramble(S1, k1)
+    # ---------- VALIDATION ----------
 
-    image_utils.save_image(
-        image_utils.indexed_to_rgb(rev, MAP1),
-        "scramble_reverse_test.png"
-    )
-    
-    test = decryption.reverse_diffusion(D1, user_key)
+    print("\n===== VALIDATION =====")
 
-    image_utils.save_image(
-        image_utils.indexed_to_rgb(test, MAP1),
-        "diffusion_reverse_test.png"
-    )
+    print("Image1 match:", (I1_index == RI1).all())
+    print("Image2 match:", (I2_index == RI2).all())
+    print("Image3 match:", (I3_index == RI3).all())
 
-    # ---------- SAVE RESULTS ----------
+    # ---------- SAVE DECRYPTED ----------
 
     image_utils.save_image(
         image_utils.indexed_to_rgb(RI1, MAP1),
@@ -75,8 +68,7 @@ def main():
         "decrypted3.png"
     )
 
-    print("\nDecryption Completed Successfully!")
-    print("Check images/output folder for results")
+    print("\nDecryption Completed Successfully!\n")
 
 
 if __name__ == "__main__":

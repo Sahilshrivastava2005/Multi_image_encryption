@@ -1,6 +1,7 @@
 from modules import image_utils
 from modules import encryption
 from modules import decryption
+from modules import security
 import config
 
 
@@ -69,6 +70,21 @@ def main():
     )
 
     print("\nDecryption Completed Successfully!\n")
+    print("\n--- SECURITY ANALYSIS ---")
+
+    ent = security.entropy(D1)
+    corr = security.correlation(D1)
+
+    print("Entropy:", ent)
+    print("Correlation:", corr)
+
+    # NPCR and UACI test
+    npcr_val = security.npcr(I1_index, D1)
+    uaci_val = security.uaci(I1_index, D1)
+
+    print("NPCR:", npcr_val)
+    print("UACI:", uaci_val)
+
 
 
 if __name__ == "__main__":

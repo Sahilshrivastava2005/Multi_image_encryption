@@ -17,7 +17,7 @@ def expand_fractal_matrix(FM, order):
     Iteratively expand fractal matrix to required order
     Following equation (8) from the paper
     """
-
+    FM1=FM
     for i in range(2, order + 1):
 
         size = FM.shape[0]
@@ -25,10 +25,10 @@ def expand_fractal_matrix(FM, order):
 
         factor = (2 ** (2 * (i - 1)))
 
-        B1 = (FM[0, 0] - 1) * factor * E + FM
-        B2 = (FM[0, 1] - 1) * factor * E + FM
-        B3 = (FM[1, 0] - 1) * factor * E + FM
-        B4 = (FM[1, 1] - 1) * factor * E + FM
+        B1 = (FM1[0, 0] - 1) * factor * E + FM
+        B2 = (FM1[0, 1] - 1) * factor * E + FM
+        B3 = (FM1[1, 0] - 1) * factor * E + FM
+        B4 = (FM1[1, 1] - 1) * factor * E + FM
 
         # Combine blocks to form next order matrix
         FM = np.block([

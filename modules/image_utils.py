@@ -79,7 +79,6 @@ def rgb_to_indexed(img):
     # Get palette map
     palette = indexed.getpalette()
 
-    # Convert indexed image to numpy array
     index_matrix = np.array(indexed)
 
     return index_matrix, palette

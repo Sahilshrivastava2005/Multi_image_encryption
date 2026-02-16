@@ -3,6 +3,8 @@ from modules import encryption
 from modules import decryption
 from modules import security
 import config
+import numpy as np
+import hashlib
 
 
 def main():
@@ -17,8 +19,12 @@ def main():
 
     (I1_index, MAP1), (I2_index, MAP2), (I3_index, MAP3) = \
         image_utils.prepare_indexed_images(I1, I2, I3)
+    
+    user_key_str = np.hstack([I1_index, I2_index, I3_index])   # shape (M, 3N)
 
-    user_key = "MY_SECRET_KEY_123"
+    user_key = ''.join(map(str, user_key_str.flatten()))
+    # shape (M, 3N)
+    
 
     # ---------- ENCRYPTION ----------
 

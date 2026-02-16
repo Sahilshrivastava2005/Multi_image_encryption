@@ -86,46 +86,40 @@ def cicsml_generate(length, a=None, b=None, p0=None, x0=None):
 
 def derive_initial_conditions_from_key(user_key):
     """
-    Derive (a, b, x0, p0) in the style of the paper.
-
-    Paper idea (Section 3.1): [page:6]
-    - Take a 384-bit key Key (48 bytes).
-    - Use segments of Key to compute:
-        a = 3.99 + Key1 * 10^{-14}
-        b = 3.99 + Key2 * 10^{-14}
-        x1(i) = (Key_{2+i} ⊕ Key_{11+i}) / 256
-        p1 = (Key_20 ⊕ Key_30) / 256       (etc.)
-    Here we imitate that structure using SHA-384.
+    Derive (a, b, x0, p0) following Section III-D, Step 1.[page:1]
     """
 
-    # 384-bit hash (48 bytes) from user_key
-    key_bytes = hashlib.sha384(user_key.encode()).digest()  # length 48
+    # SHA-384 → 48 bytes → 12 segments of 4 bytes (approx. “Key_i”).[page:1]
+    key_bytes = hashlib.sha384(user_key.encode()).digest()  # 48 bytes
+    assert len(key_bytes) == 48
 
-    # Interpret bytes as integers
-    K = list(key_bytes)  # K[0]..K[47]
+    # Interpret 12 segments (each 4 bytes) as non‑negative integers Key1..Key12.[page:1]
+    Keys = []
+    for i in range(12):
+        seg = key_bytes[4 * i : 4 * (i + 1)]
+        Keys.append(int.from_bytes(seg, byteorder="big", signed=False))
 
-    # Build Key1 and Key2 as large integers (using 8 bytes each, like paper's idea)
-    Key1 = 0
-    Key2 = 0
-    for i in range(8):
-        Key1 = Key1 * 256 + K[i]
-        Key2 = Key2 * 256 + K[8 + i]
+    Key1, Key2 = Keys[0], Keys[1]
 
-    # Derive a, b in (3.99, 4) as in paper: a = 3.99 + Key1 * 10^{-14} (mod 0.01). [page:6]
-    # Here we mod them into [0, 0.01) then add 3.99
-    a = 3.99 + ((Key1 % 10**12) * 1e-14)  # 10^-14 scale
-    b = 3.99 + ((Key2 % 10**12) * 1e-14)
-    # clamp slightly
-    a = min(max(a, 3.99), 4.0)
-    b = min(max(b, 3.99), 4.0)
+    # a = 3.99 + Key1 * 10^{-14} (mod 0.01), b same.[page:1]
+    # Implement: take fractional part scaled into [0,0.01), then add 3.99.
+    frac1 = (Key1 % 10**14) * 1e-14  # in [0,1)
+    frac2 = (Key2 % 10**14) * 1e-14  # in [0,1)
 
-    # Derive x0 (for x1(i)) and p0 in (0,1), using XOR structure like x1(i) and p1. [page:6]
-    # Example: x0 from (K[16] ⊕ K[24]) / 256
-    x0 = (K[16] ^ K[24]) / 256.0
-    # p0 from (K[20] ⊕ K[30]) / 256
-    p0 = (K[20] ^ K[30]) / 256.0
+    a = 3.99 + (frac1 * 0.01)        # in [3.99, 4.00)
+    b = 3.99 + (frac2 * 0.01)
 
-    # avoid exact 0 or 1
+    # Clamp to (3.57, 4] if you want to stay inside the stated parameter range.[page:1]
+    a = min(max(a, 3.57), 4.0)
+    b = min(max(b, 3.57), 4.0)
+
+    # x0 from x1(i) = 0.i + Key_{2+i} * 10^{-14}; choose i=1 → Key3.[page:1]
+    # 0.1 + tiny offset ensures (0,1).
+    x0 = 0.1 + (Keys[2] % 10**14) * 1e-14
+    # p0 from p1 = 0.5 + Key12 * 10^{-14}.[page:1]
+    p0 = 0.5 + (Keys[11] % 10**14) * 1e-14
+
+    # Strictly avoid hitting 0 or 1 numerically.
     eps = 1e-6
     x0 = min(max(x0, eps), 1.0 - eps)
     p0 = min(max(p0, eps), 1.0 - eps)
@@ -154,3 +148,5 @@ def generate_chaos_with_key(user_key, length):
     )
 
     return seq
+
+

@@ -1,10 +1,8 @@
 from modules import image_utils
 from modules import encryption
 from modules import decryption
-from modules import security
 import config
 import numpy as np
-import hashlib
 
 
 def main():
@@ -15,82 +13,66 @@ def main():
     img2 = config.INPUT_PATH + "img2.png"
     img3 = config.INPUT_PATH + "img3.png"
 
-    I1, I2, I3 = image_utils.prepare_images(img1, img2, img3)
+    # -------------------------------------------------
+    # Load RGB images
+    # -------------------------------------------------
+    P1_rgb, P2_rgb, P3_rgb = image_utils.prepare_images(
+        img1, img2, img3
+    )
 
+    # -------------------------------------------------
+    # Prepare indexed images + store palettes
+    # -------------------------------------------------
     (I1_index, MAP1), (I2_index, MAP2), (I3_index, MAP3) = \
-        image_utils.prepare_indexed_images(I1, I2, I3)
-    
-    user_key_str = np.hstack([I1_index, I2_index, I3_index])   # shape (M, 3N)
+        image_utils.prepare_indexed_images(P1_rgb, P2_rgb, P3_rgb)
 
-    user_key = ''.join(map(str, user_key_str.flatten()))
-    # shape (M, 3N)
-    
+    # -------------------------------------------------
+    # USER SECRET KEY
+    # -------------------------------------------------
+    user_key = input("Enter secret key: ").strip()
 
-    # ---------- ENCRYPTION ----------
+    if len(user_key) < 8:
+        raise ValueError("Key must be at least 8 characters.")
 
-    (S1, k1), (S2, k2), (S3, k3) = encryption.scramble_all_images(
-        I1_index, I2_index, I3_index, user_key
+    # -------------------------------------------------
+    # ENCRYPTION
+    # -------------------------------------------------
+    cipher_image = encryption.encrypt_three_images(
+        P1_rgb,
+        P2_rgb,
+        P3_rgb,
+        user_key
     )
 
-    D1, D2, D3 = encryption.diffuse_all_images(
-        S1, S2, S3, user_key
+    image_utils.save_image(cipher_image, "final_cipher.png")
+    print("[SUCCESS] Encryption completed.")
+
+    # -------------------------------------------------
+    # DECRYPTION (returns RGB images directly)
+    # -------------------------------------------------
+    P1_dec, P2_dec, P3_dec = decryption.decrypt_three_images(
+        cipher_image,
+        user_key,
+        MAP1, MAP2, MAP3
     )
 
-    image_utils.save_image(D1, "cipher1.png")
-    image_utils.save_image(D2, "cipher2.png")
-    image_utils.save_image(D3, "cipher3.png")
+    image_utils.save_image(P1_dec, "dec1.png")
+    image_utils.save_image(P2_dec, "dec2.png")
+    image_utils.save_image(P3_dec, "dec3.png")
 
-    # ---------- DECRYPTION ----------
+    print("[SUCCESS] Decryption completed.")
 
-    RS1, RS2, RS3 = decryption.reverse_diffusion_all(
-        D1, D2, D3, user_key
-    )
-
-    RI1, RI2, RI3 = decryption.reverse_scramble_all(
-        RS1, RS2, RS3, k1, k2, k3
-    )
-
-    # ---------- VALIDATION ----------
-
-    print("\n===== VALIDATION =====")
-
-    print("Image1 match:", (I1_index == RI1).all())
-    print("Image2 match:", (I2_index == RI2).all())
-    print("Image3 match:", (I3_index == RI3).all())
-
-    # ---------- SAVE DECRYPTED ----------
-
-    image_utils.save_image(
-        image_utils.indexed_to_rgb(RI1, MAP1),
-        "decrypted1.png"
-    )
-
-    image_utils.save_image(
-        image_utils.indexed_to_rgb(RI2, MAP2),
-        "decrypted2.png"
-    )
-
-    image_utils.save_image(
-        image_utils.indexed_to_rgb(RI3, MAP3),
-        "decrypted3.png"
-    )
-
-    print("\nDecryption Completed Successfully!\n")
-    print("\n--- SECURITY ANALYSIS ---")
-
-    ent = security.entropy(D1)
-    corr = security.correlation(D1)
-
-    print("Entropy:", ent)
-    print("Correlation:", corr)
-
-    # NPCR and UACI test
-    npcr_val = security.npcr(I1_index, D1)
-    uaci_val = security.uaci(I1_index, D1)
-
-    print("NPCR:", npcr_val)
-    print("UACI:", uaci_val)
-
+    # -------------------------------------------------
+    # Verification Check
+    # -------------------------------------------------
+    if (
+        np.array_equal(P1_rgb, P1_dec) and
+        np.array_equal(P2_rgb, P2_dec) and
+        np.array_equal(P3_rgb, P3_dec)
+    ):
+        print("✅ PERFECT REVERSIBILITY CONFIRMED")
+    else:
+        print("❌ ERROR: Decryption mismatch")
 
 
 if __name__ == "__main__":

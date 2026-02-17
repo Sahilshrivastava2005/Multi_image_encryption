@@ -1,12 +1,9 @@
 import numpy as np
-import config
+
 
 # --------- HILBERT CURVE CORE LOGIC ---------
 
 def rot(n, x, y, rx, ry):
-    """
-    Rotation helper for Hilbert curve to maintain continuity.
-    """
     if ry == 0:
         if rx == 1:
             x = n - 1 - x
@@ -14,10 +11,10 @@ def rot(n, x, y, rx, ry):
         return y, x
     return x, y
 
+
 def hilbert_index_to_xy(n, d):
     """
-    Convert a 1D Hilbert index 'd' back into 2D (x, y) coordinates.
-    n must be a power of 2.
+    Map 1D Hilbert index d -> 2D (x,y), for an n×n grid (n power of 2).
     """
     t = d
     x = y = 0
@@ -32,10 +29,10 @@ def hilbert_index_to_xy(n, d):
         s *= 2
     return x, y
 
+
 def generate_hilbert_indices(n):
     """
-    Generates a lookup table of (x, y) coordinates following the Hilbert path.
-    Essential for Method 2 mapping.
+    Return an array of shape (n*n, 2) giving (x,y) for Hilbert indices 0..n*n-1.
     """
     indices = np.zeros((n * n, 2), dtype=int)
     for i in range(n * n):
@@ -43,67 +40,62 @@ def generate_hilbert_indices(n):
         indices[i] = [x, y]
     return indices
 
-# --------- SCRAMBLING METHODS ---------
 
-def hilbert_method1_scramble(image):
-    """
-    Method 1: Direct Hilbert scanning. 
-    Reads the image pixels in the order they appear on the Hilbert curve.
-    """
-    h, w = image.shape
-    indices = generate_hilbert_indices(h)
-    
-    # Extract pixels in Hilbert order
-    scrambled_flat = image[indices[:, 0], indices[:, 1]]
-    
-    return scrambled_flat.reshape(h, w), indices
+# --------- SCRAMBLING METHODS (PAPER-CONSISTENT) ---------
 
-def inverse_method1(scrambled, indices):
+def hilbert_method1_scramble(A_mat):
     """
-    Reverse Method 1: Place pixels from 1D back to their 2D Hilbert coordinates.
+    Method 1 (Fig. 7a):
+    - A_mat is the matrix of index labels (not pixel values), shape (M,N).
+    - We traverse the matrix in Hilbert order and read *the labels*.
+    - Output is IC1: a 1D permutation of [0..L-1] in the order specified by
+      the Hilbert path applied to A_mat.
     """
-    h, w = scrambled.shape
-    flat = scrambled.flatten()
-    
-    reconstructed = np.zeros((h, w), dtype=scrambled.dtype)
-    reconstructed[indices[:, 0], indices[:, 1]] = flat
-    
-    return reconstructed
+    h, w = A_mat.shape
+    assert h == w, "Hilbert implementation assumes square matrix (M == N)."
 
-def hilbert_method2_scramble(indexed_img, fractal_perm):
+    # 1. Generate Hilbert (x,y) order over the h×h grid
+    indices = generate_hilbert_indices(h)  # (h*h, 2): x=row, y=col
+
+    # 2. Extract labels in Hilbert order
+    labels_in_hilbert = A_mat[indices[:, 0], indices[:, 1]]
+
+    # 3. Return as 1D permutation (IC1)
+    IC1 = labels_in_hilbert.reshape(-1)
+    return IC1
+
+
+def hilbert_method2_scramble(B_mat, fractal_perm):
     """
-    Method 2: Hybrid Hilbert-Fractal scrambling.
-    Uses fractal values to re-order the Hilbert-scanned pixels.
+    Method 2 (Fig. 7b):
+    - First arrange the labels B_mat into 1D (row-major).
+    - Then assign those 1D labels onto the image grid following Hilbert order.
+    - Additionally, we permute by a key (fractal_perm) as in your design.
+    - Return IC2: a 1D permutation of [0..L-1].
     """
-    h, w = indexed_img.shape
-    indices = generate_hilbert_indices(h)
-    # 1. Hilbert Scan (2D -> 1D)
-    hilbert_flat = indexed_img[indices[:, 0], indices[:, 1]]
-    # 2. Prepare Fractal Key (Tile if smaller than image)
-    f_flat = fractal_perm.flatten()
-    if f_flat.size != hilbert_flat.size:
-        num_repeats = (hilbert_flat.size // f_flat.size) + 1
-        f_flat = np.tile(f_flat, num_repeats)[:hilbert_flat.size]
-    # 3. Create permutation based on fractal values
+    h, w = B_mat.shape
+    assert h == w, "Hilbert implementation assumes square matrix (M == N)."
+    L = h * w
+
+    # 1. Row-major flatten of labels
+    flat_labels = B_mat.reshape(-1, order='C')  # 0..L-1 in some scrambled order
+
+    # 2. Hilbert indices for h×h
+    hilbert_xy = generate_hilbert_indices(h)  # (L, 2)
+
+    # 3. Optional fractal-based permutation of the 1D labels
+    f_flat = fractal_perm.reshape(-1)
+    if f_flat.size != L:
+        num_repeats = L // f_flat.size + 1
+        f_flat = np.tile(f_flat, num_repeats)[:L]
     perm_indices = np.argsort(f_flat)
-    # 4. Scramble the Hilbert sequence
-    scrambled_flat = hilbert_flat[perm_indices]
-    return scrambled_flat.reshape(h, w), perm_indices
 
-def inverse_method2(scrambled, perm_indices):
-    """
-    Reverse Method 2: Reverse fractal permutation, then reverse Hilbert scan.
-    """
-    h, w = scrambled.shape
-    indices = generate_hilbert_indices(h)
-    flat = scrambled.flatten()
-    
-    # 1. Reverse the fractal permutation
-    inv_perm = np.argsort(perm_indices)
-    hilbert_flat = flat[inv_perm]
-    
-    # 2. Map 1D Hilbert sequence back to 2D
-    original = np.zeros((h, w), dtype=scrambled.dtype)
-    original[indices[:, 0], indices[:, 1]] = hilbert_flat
-    
-    return original
+    flat_labels_perm = flat_labels[perm_indices]
+
+    # 4. Place permuted labels onto the grid in Hilbert order
+    grid_labels = np.zeros((h, w), dtype=flat_labels_perm.dtype)
+    grid_labels[hilbert_xy[:, 0], hilbert_xy[:, 1]] = flat_labels_perm
+
+    # 5. IC2 is the labels of this grid read back row-major
+    IC2 = grid_labels.reshape(-1, order='C')
+    return IC2

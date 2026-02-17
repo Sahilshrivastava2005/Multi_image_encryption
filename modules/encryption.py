@@ -3,69 +3,9 @@ import hashlib
 from modules import hilbert
 from modules import fractal
 from modules import cicsml
-from modules import image_utils
-
-
-# ==========================================================
-# 1️⃣ FRACTAL MATRIX GENERATION
-# ==========================================================
-
-def build_fractal_matrix(M, N, Keys):
-
-    max_side = max(M, N)
-    e = int(np.floor(np.log2(max_side))) + 1
-    size = 2 ** e
-
-    FM = np.array([[6, 4],
-                   [2, 8]], dtype=np.float64)
-
-    while FM.shape[0] < size:
-        Fk = FM
-        FM = np.block([
-            [2 * Fk, 3 * Fk],
-            [4 * Fk, 1 * Fk]
-        ])
-
-    FM = FM[:size, :size]
-
-    # ✅ FIX 1 — COLUMN-FIRST FLATTENING
-    FM_vec = FM.reshape(-1, order='F')
-    FM_vec = FM_vec[:M * N]
-
-    # Fractal permutation
-    A = np.argsort(FM_vec)
-    A_mat = A.reshape(M, N, order='F')
-
-    # Hilbert scrambles
-    A_scrambled, IC1 = hilbert.hilbert_method1_scramble(A_mat)
-    B_scrambled, IC2 = hilbert.hilbert_method2_scramble(A_mat, A)
-
-    IC1 = IC1.astype(np.int64).flatten()[:M * N]
-    IC2 = IC2.astype(np.int64).flatten()[:M * N]
-
-
-    # Build F matrix
-    size_minus1 = size - 1
-    xs, ys = [], []
-
-    for i in range(4):
-        xi = (Keys[i] % size_minus1) + 1
-        yi = (Keys[i + 4] % size_minus1) + 1
-        xs.append(xi - 1)
-        ys.append(yi - 1)
-
-    Fmat = np.array([
-        [FM[xs[0], ys[0]], FM[xs[1], ys[1]]],
-        [FM[xs[2], ys[2]], FM[xs[3], ys[3]]]
-    ], dtype=np.int64)
-
-    return FM, IC1, IC2, Fmat
 
 
 
-# ==========================================================
-# 2️⃣ KEY DERIVATION
-# ==========================================================
 
 def derive_key_parts(user_key: str):
     key_bytes = hashlib.sha384(user_key.encode()).digest()
@@ -77,9 +17,6 @@ def derive_key_parts(user_key: str):
 
 
 
-# ==========================================================
-# 3️⃣ CHAOS GENERATION WRAPPER (ENSURE 8 SEQUENCES)
-# ==========================================================
 
 def generate_chaos_sequences(user_key, length):
     chaos = cicsml.generate_chaos_with_key(user_key, length=8 * length)
@@ -91,10 +28,6 @@ def generate_chaos_sequences(user_key, length):
     return np.split(chaos, 8)
 
 
-# ==========================================================
-# 4️⃣ SYNCHRONIZED DISORDER DIFFUSION (Optimized)
-# ==========================================================
-
 
 def synchronized_disorder_diffusion(I1, I2, I3,
                                     IC1, IC2, Fmat,
@@ -102,7 +35,6 @@ def synchronized_disorder_diffusion(I1, I2, I3,
     M, N = I1.shape
     L = M * N
 
-    # Column-first flatten
     v1 = I1.reshape(-1, order='F').astype(np.uint8)
     v2 = I2.reshape(-1, order='F').astype(np.uint8)
     v3 = I3.reshape(-1, order='F').astype(np.uint8)
@@ -110,7 +42,6 @@ def synchronized_disorder_diffusion(I1, I2, I3,
     IC1 = np.asarray(IC1, dtype=np.int64)
     IC2 = np.asarray(IC2, dtype=np.int64)
 
-    # Ensure chaotic sequences are uint8 and correct length
     D1 = D1[:L].astype(np.uint8)
     D2 = D2[:L].astype(np.uint8)
     D3 = D3[:L].astype(np.uint8)
@@ -120,14 +51,13 @@ def synchronized_disorder_diffusion(I1, I2, I3,
     D7 = D7[:L].astype(np.uint8)
     D8 = D8[:L].astype(np.uint8)
 
-    d7_const = D7[L - 1]  # D7(M×N)
-    d8_const = D8[L - 1]  # D8(M×N)
+    d7_const = D7[L - 1]  
+    d8_const = D8[L - 1]  
 
-    # ---------- FIRST STAGE (Eq. 12–14 upper) ----------
     TR = np.zeros(L, dtype=np.uint8)
     TG = np.zeros(L, dtype=np.uint8)
     TB = np.zeros(L, dtype=np.uint8)
-
+    
     for n in range(L):
         i = IC1[n]
 
@@ -142,15 +72,14 @@ def synchronized_disorder_diffusion(I1, I2, I3,
             TB[n] = v3[i] ^ d7_const ^ TB[n - 1] ^ D5[0]
 
         else:
-            j = n - 1          # j+1 in paper
-            # R channel (Eq. 12)
+            j = n - 1        
+            
             TR[n] = v1[i] ^ TR[n - 2] ^ TR[n - 1] ^ D1[j]
-            # G channel (Eq. 13) — cross-coupled with TR[n-2]
+          
             TG[n] = v2[i] ^ TR[n - 2] ^ TG[n - 1] ^ D3[j]
-            # B channel (Eq. 14)
+          
             TB[n] = v3[i] ^ TB[n - 2] ^ TB[n - 1] ^ D5[j]
 
-    # ---------- F-matrix mapping (Eq. 15) ----------
     F = np.asarray(Fmat, dtype=np.int64)
     a, b = F[0]
     c, d = F[1]
@@ -158,12 +87,10 @@ def synchronized_disorder_diffusion(I1, I2, I3,
     mod_val = max(L - 1, 1)
     idxs = np.arange(L, dtype=np.int64)
 
-    # j = (a*i + b) mod (M*N−1)
-    # k = (c*i + d) mod (M*N−1)
+
     j_all = (a * idxs + b) % mod_val
     k_all = (c * idxs + d) % mod_val
 
-    # ---------- SECOND STAGE (Eq. 12–14 lower) ----------
     CR = np.zeros(L, dtype=np.uint8)
     CG = np.zeros(L, dtype=np.uint8)
     CB = np.zeros(L, dtype=np.uint8)
@@ -191,53 +118,22 @@ def synchronized_disorder_diffusion(I1, I2, I3,
     CR_mat = CR.reshape(M, N, order='F')
     CG_mat = CG.reshape(M, N, order='F')
     CB_mat = CB.reshape(M, N, order='F')
-
+    
+    
     return CR_mat, CG_mat, CB_mat
 
 
+def encrypt_three_images(I1, I2, I3, user_key: str):
+    H, W = I1.shape
 
-# ==========================================================
-# 5️⃣ MAIN ENCRYPTION FUNCTION
-# ==========================================================
-
-def encrypt_three_images(P1_rgb, P2_rgb, P3_rgb, user_key: str):
-    H, W, _ = P1_rgb.shape
-
-    # Convert to indexed
-    I1, MAP1 = image_utils.rgb_to_indexed(P1_rgb)
-    I2, MAP2 = image_utils.rgb_to_indexed(P2_rgb)
-    I3, MAP3 = image_utils.rgb_to_indexed(P3_rgb)
-
-    # Derive keys
     Keys = derive_key_parts(user_key)
-
-    # Fractal + control indices + F
-    FM, IC1, IC2, Fmat = build_fractal_matrix(H, W, Keys)
-
-    # Chaos sequences (ensure length H*W)
+    FM, IC1, IC2, Fmat = fractal.build_fractal_matrix(H, W, Keys)
+    
     D1, D2, D3, D4, D5, D6, D7, D8 = generate_chaos_sequences(user_key, H * W)
-    D1, D2, D3, D4, D5, D6, D7, D8 = (
-        D1[:H*W], D2[:H*W], D3[:H*W], D4[:H*W],
-        D5[:H*W], D6[:H*W], D7[:H*W], D8[:H*W]
-    )
 
-    # Encryption core
     CR, CG, CB = synchronized_disorder_diffusion(
-        I1, I2, I3,
-        IC1, IC2, Fmat,
+        I1, I2, I3, IC1, IC2, Fmat,
         D1, D2, D3, D4, D5, D6, D7, D8
     )
-
-    # Indexed → RGB
-    CR_rgb = image_utils.indexed_to_rgb(CR, MAP1)
-    CG_rgb = image_utils.indexed_to_rgb(CG, MAP2)
-    CB_rgb = image_utils.indexed_to_rgb(CB, MAP3)
-
-    # Combine channels into final cipher image
-    C = np.stack([
-        CR_rgb[..., 0],
-        CG_rgb[..., 1],
-        CB_rgb[..., 2]
-    ], axis=-1).astype(np.uint8)
-
+    C = np.stack([CR, CG, CB], axis=-1).astype(np.uint8)
     return C

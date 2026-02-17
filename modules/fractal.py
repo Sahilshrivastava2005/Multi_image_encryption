@@ -1,6 +1,6 @@
 import numpy as np
 import config
-
+from modules import hilbert
 
 def generate_base_matrix():
     """
@@ -12,58 +12,54 @@ def generate_base_matrix():
     ])
 
 
-def expand_fractal_matrix(FM, order):
-    """
-    Iteratively expand fractal matrix to required order
-    Following equation (8) from the paper
-    """
-    FM1=FM
-    for i in range(2, order + 1):
 
-        size = FM.shape[0]
-        E = np.ones_like(FM)
 
-        factor = (2 ** (2 * (i - 1)))
 
-        B1 = (FM1[0, 0] - 1) * factor * E + FM
-        B2 = (FM1[0, 1] - 1) * factor * E + FM
-        B3 = (FM1[1, 0] - 1) * factor * E + FM
-        B4 = (FM1[1, 1] - 1) * factor * E + FM
 
-        # Combine blocks to form next order matrix
+def build_fractal_matrix(M, N, Keys):
+    max_side = max(M, N)
+    e = int(np.floor(np.log2(max_side))) + 1
+    size = 2 ** e
+    FM = np.array([[6, 4],
+                   [2, 8]], dtype=np.float64)
+
+    while FM.shape[0] < size:
+        Fk = FM
         FM = np.block([
-            [B1, B2],
-            [B3, B4]
+            [2 * Fk, 3 * Fk],
+            [4 * Fk, 1 * Fk]
         ])
 
-    return FM
+    FM = FM[:size, :size]
 
+    L = M * N
+    FM_vec = FM.reshape(-1, order='F')[:L]
 
-def generate_fractal_matrix():
-    """
-    Main function to generate fractal matrix using order from config
-    """
+    A = np.argsort(-FM_vec)       
 
-    print("[INFO] Generating fractal matrix...")
+    B = A.copy()
 
-    base = generate_base_matrix()
+    A_mat = A.reshape(M, N, order='C')
+    B_mat = B.reshape(M, N, order='C')
 
-    FM = expand_fractal_matrix(base, config.FRACTAL_ORDER)
+    IC1 = hilbert.hilbert_method1_scramble(A_mat)         
+    IC2 = hilbert.hilbert_method2_scramble(B_mat, A_mat)  
 
-    print("[INFO] Fractal matrix generated with size:", FM.shape)
+    IC1 = np.asarray(IC1, dtype=np.int64)[:L]
+    IC2 = np.asarray(IC2, dtype=np.int64)[:L]
 
-    return FM
+    size_minus1 = size - 1
+    xs, ys = [], []
+    for i in range(4):
+        xi = (Keys[i] % size_minus1) + 1   
+        yi = (Keys[i + 4] % size_minus1) + 1
+        xs.append(xi - 1)            
+        ys.append(yi - 1)
 
+    Fmat = np.array([
+        [FM[xs[0], ys[0]], FM[xs[1], ys[1]]],
+        [FM[xs[2], ys[2]], FM[xs[3], ys[3]]]
+    ], dtype=np.int64)
 
-def get_fractal_permutation(FM):
-    """
-    Convert fractal matrix into permutation vector
-    Used later for scrambling
-    """
+    return FM, IC1, IC2, Fmat
 
-    flat = FM.flatten()
-
-    # Get permutation order based on sorted indices
-    perm = np.argsort(flat)
-
-    return perm

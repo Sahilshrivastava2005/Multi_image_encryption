@@ -1,7 +1,7 @@
 # ---------- GLOBAL CONFIGURATION ----------
 
 # Image settings
-IMAGE_SIZE = (256, 256)     # All images will be resized to this
+IMAGE_SIZE = (256, 256)   # or whatever size
 INDEXED_COLORS = 256
 
 # Chaotic system parameters
